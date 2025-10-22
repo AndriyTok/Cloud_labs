@@ -1,5 +1,4 @@
 import http
-
 import requests
 
 faulty_endpoint = "http://localhost:8000/failure"

@@ -8,7 +8,7 @@ app = Flask(__name__)
 @app.route('/success')
 def success_endpoint():
     return {
-        "msg": "Call to this endpoint was a smashing success."
+        "msg": "Call to this endpoint was a success."
     }, 200
 
 

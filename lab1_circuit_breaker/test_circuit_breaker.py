@@ -1,6 +1,8 @@
 import time
-from circuit_breaker import CircuitBreaker
+from unittest import mock
+from circuit_breaker import CircuitBreaker, RemoteCallFailedException, StateChoices
 from snippets import make_request, faulty_endpoint, success_endpoint, random_status_endpoint
+
 
 def test_closed_to_open():
     """Test CLOSED → OPEN state transition"""
@@ -17,10 +19,13 @@ def test_closed_to_open():
     for i in range(4):
         try:
             cb_faulty.make_remote_call(faulty_endpoint)
-        except Exception as e:
+        except RemoteCallFailedException as e:
             print(f"Attempt {i + 1}: {e}")
             print(f"Current state: {cb_faulty.state}")
             print(f"Failed attempts: {cb_faulty._failed_attempt_count}")
+
+    # Verify state changed to OPEN after threshold failures
+    assert cb_faulty.state == StateChoices.OPEN
 
 
 def test_open_state():
@@ -36,15 +41,18 @@ def test_open_state():
 
     # Force to OPEN state first
     cb_faulty._failed_attempt_count = 3
-    cb_faulty.set_state("open")
+    cb_faulty.set_state(StateChoices.OPEN)
     cb_faulty.update_last_attempt_timestamp()
 
     # Try calling while in OPEN state
     for i in range(3):
         try:
             cb_faulty.make_remote_call(faulty_endpoint)
-        except Exception as e:
+        except RemoteCallFailedException as e:
             print(f"OPEN state call {i + 1}: {e}")
+
+    # Verify still in OPEN state
+    assert cb_faulty.state == StateChoices.OPEN
 
 
 def test_recovery():
@@ -59,7 +67,7 @@ def test_recovery():
     )
 
     # Set to OPEN state and wait
-    cb_success.set_state("open")
+    cb_success.set_state(StateChoices.OPEN)
     cb_success.update_last_attempt_timestamp()
 
     print(f"Waiting {cb_success.delay + 1} seconds for delay period...")
@@ -69,6 +77,8 @@ def test_recovery():
     try:
         result = cb_success.make_remote_call(success_endpoint)
         print(f"Recovery successful! State: {cb_success.state}")
+        # Verify state changed to CLOSED after successful call
+        assert cb_success.state == StateChoices.CLOSED
     except Exception as e:
         print(f"Recovery failed: {e}")
 
@@ -88,10 +98,46 @@ def test_random_behavior():
         try:
             result = cb_random.make_remote_call(random_status_endpoint)
             print(f"Call {i + 1}: SUCCESS - State: {cb_random.state}")
-        except Exception as e:
+        except RemoteCallFailedException as e:
             print(f"Call {i + 1}: FAILED - State: {cb_random.state}")
 
         time.sleep(0.5)
+
+
+def test_with_mock():
+    """Test with controlled mock function"""
+    print("\nTesting with mock function...")
+
+    mock_fn = mock.Mock()
+    mock_fn.side_effect = [Exception("Failed"), Exception("Failed"),
+                           Exception("Failed"), "success", "success"]
+
+    cb = CircuitBreaker(
+        func=mock_fn,
+        exceptions=(Exception,),
+        threshold=3,
+        delay=1
+    )
+
+    # First 3 calls - should fail and open circuit
+    for i in range(3):
+        try:
+            cb.make_remote_call()
+        except RemoteCallFailedException:
+            print(f"Call {i + 1}: Failed as expected")
+
+    assert cb.state == StateChoices.OPEN
+
+    # Wait for timeout
+    time.sleep(cb.delay + 0.1)
+
+    # Next call should succeed and close circuit
+    try:
+        result = cb.make_remote_call()
+        print(f"Call 4: Succeeded as expected, result: {result}")
+        assert cb.state == StateChoices.CLOSED
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
 
 def run_all_tests():
@@ -103,6 +149,7 @@ def run_all_tests():
     test_open_state()
     test_recovery()
     test_random_behavior()
+    test_with_mock()
 
 
 if __name__ == "__main__":
