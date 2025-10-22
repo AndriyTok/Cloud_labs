@@ -1,19 +1,20 @@
 import logging
 from datetime import datetime, timezone
 
+#standart logging settings
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
 )
 
-
+#constant states
 class StateChoices:
     OPEN = "open"
     CLOSED = "closed"
     HALF_OPEN = "half_open"
 
-
+#special exception for remote call failures
 class RemoteCallFailedException(Exception):
     pass
 
@@ -25,15 +26,11 @@ class CircuitBreaker:
         self.exceptions_to_catch = exceptions
         self.threshold = threshold
         self.delay = delay
-
-        # by default set the state to closed
         self.state = StateChoices.CLOSED
-
-
         self.last_attempt_timestamp = None
-        # keep track of failed attemp count
         self._failed_attempt_count = 0
 
+    #additional helper methods
     def update_last_attempt_timestamp(self):
         self.last_attempt_timestamp = datetime.now(timezone.utc).timestamp()
 
@@ -42,6 +39,8 @@ class CircuitBreaker:
         self.state = state
         logging.info(f"Changed state from {prev_state} to {self.state}")
 
+    #main methods
+    #default state handling
     def handle_closed_state(self, *args, **kwargs):
         allowed_exceptions = self.exceptions_to_catch
         try:
@@ -67,7 +66,7 @@ class CircuitBreaker:
             raise RemoteCallFailedException from e
 
     def handle_open_state(self, *args, **kwargs):
-        current_timestamp = datetime.utcnow().timestamp()
+        current_timestamp = datetime.now(timezone.utc).timestamp()
         # if `delay` seconds have not elapsed since the last attempt, raise an exception
         if self.last_attempt_timestamp + self.delay >= current_timestamp:
             raise RemoteCallFailedException(f"Retry after {self.last_attempt_timestamp+self.delay-current_timestamp} secs")
@@ -101,6 +100,7 @@ class CircuitBreaker:
             # raise the error
             raise RemoteCallFailedException from e
 
+    #dispatcher method
     def make_remote_call(self, *args, **kwargs):
         if self.state == StateChoices.CLOSED:
             return self.handle_closed_state(*args, **kwargs)
