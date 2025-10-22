@@ -1,5 +1,4 @@
 import http
-from _curses import raw
 
 import requests
 
