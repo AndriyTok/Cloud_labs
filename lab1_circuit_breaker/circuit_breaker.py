@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,7 +35,7 @@ class CircuitBreaker:
         self._failed_attempt_count = 0
 
     def update_last_attempt_timestamp(self):
-        self.last_attempt_timestamp = datetime.utcnow().timestamp()
+        self.last_attempt_timestamp = datetime.now(timezone.utc).timestamp()
 
     def set_state(self, state):
         prev_state = self.state
