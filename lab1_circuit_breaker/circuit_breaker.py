@@ -20,12 +20,7 @@ class RemoteCallFailedException(Exception):
 
 class CircuitBreaker:
     def __init__(self, func, exceptions, threshold, delay):
-        """
-        :param func: method that makes the remote call
-        :param exceptions: an exception or a tuple of exceptions to catch (ideally should be network exceptions)
-        :param threshold: number of failed attempts before the state is changed to "Open"
-        :param delay: delay in seconds between "Closed" and "Half-Open" state
-        """
+
         self.func = func
         self.exceptions_to_catch = exceptions
         self.threshold = threshold
@@ -53,6 +48,7 @@ class CircuitBreaker:
             ret_val = self.func(*args, **kwargs)
             logging.info("Success: Remote call")
             self.update_last_attempt_timestamp()
+            self._failed_attempt_count = 0 # reset the failed attempt count
             return ret_val
         except allowed_exceptions as e:
             # remote call has failed
