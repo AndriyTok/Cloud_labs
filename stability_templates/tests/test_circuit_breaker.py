@@ -1,10 +1,33 @@
 import time
+import pytest
 from unittest import mock
-from circuit_breaker import CircuitBreaker, RemoteCallFailedException, StateChoices
-from snippets import make_request, faulty_endpoint, success_endpoint, random_status_endpoint
+from stability_templates.patterns.circuit_breaker import (
+    CircuitBreaker,
+    RemoteCallFailedException,
+    StateChoices
+)
+from stability_templates.utils.http_client import make_request
 
 
-def test_closed_to_open():
+@pytest.fixture
+def faulty_endpoint(server_url):
+    """URL для endpoint що завжди падає"""
+    return f"{server_url}/failure"
+
+
+@pytest.fixture
+def success_endpoint(server_url):
+    """URL для endpoint що завжди успішний"""
+    return f"{server_url}/success"
+
+
+@pytest.fixture
+def random_endpoint(server_url):
+    """URL для endpoint з випадковою поведінкою"""
+    return f"{server_url}/random"
+
+
+def test_closed_to_open(mock_service, faulty_endpoint):
     """Test CLOSED → OPEN state transition"""
     print("Testing CLOSED to OPEN transition...")
 
@@ -28,7 +51,7 @@ def test_closed_to_open():
     assert cb_faulty.state == StateChoices.OPEN
 
 
-def test_open_state():
+def test_open_state(mock_service, faulty_endpoint):
     """Test OPEN state behavior"""
     print("\nTesting OPEN state behavior...")
 
@@ -55,7 +78,7 @@ def test_open_state():
     assert cb_faulty.state == StateChoices.OPEN
 
 
-def test_recovery():
+def test_recovery(mock_service, success_endpoint):
     """Test OPEN → HALF_OPEN → CLOSED recovery"""
     print("\nTesting recovery (OPEN → HALF_OPEN → CLOSED)...")
 
@@ -74,16 +97,15 @@ def test_recovery():
     time.sleep(cb_success.delay + 1)
 
     # Make successful call to recover
-    try:
-        result = cb_success.make_remote_call(success_endpoint)
-        print(f"Recovery successful! State: {cb_success.state}")
-        # Verify state changed to CLOSED after successful call
-        assert cb_success.state == StateChoices.CLOSED
-    except Exception as e:
-        print(f"Recovery failed: {e}")
+    result = cb_success.make_remote_call(success_endpoint)
+    print(f"Recovery successful! State: {cb_success.state}")
+
+    # Verify state changed to CLOSED after successful call
+    assert cb_success.state == StateChoices.CLOSED
+    assert result is not None
 
 
-def test_random_behavior():
+def test_random_behavior(mock_service, random_endpoint):
     """Test with random endpoint"""
     print("\nTesting with random endpoint...")
 
@@ -94,14 +116,21 @@ def test_random_behavior():
         delay=3
     )
 
+    success_count = 0
+    fail_count = 0
+
     for i in range(10):
         try:
-            result = cb_random.make_remote_call(random_status_endpoint)
+            result = cb_random.make_remote_call(random_endpoint)
             print(f"Call {i + 1}: SUCCESS - State: {cb_random.state}")
-        except RemoteCallFailedException as e:
+            success_count += 1
+        except RemoteCallFailedException:
             print(f"Call {i + 1}: FAILED - State: {cb_random.state}")
+            fail_count += 1
 
         time.sleep(0.5)
+
+    print(f"\nResults: {success_count} successes, {fail_count} failures")
 
 
 def test_with_mock():
@@ -109,8 +138,13 @@ def test_with_mock():
     print("\nTesting with mock function...")
 
     mock_fn = mock.Mock()
-    mock_fn.side_effect = [Exception("Failed"), Exception("Failed"),
-                           Exception("Failed"), "success", "success"]
+    mock_fn.side_effect = [
+        Exception("Failed"),
+        Exception("Failed"),
+        Exception("Failed"),
+        "success",
+        "success"
+    ]
 
     cb = CircuitBreaker(
         func=mock_fn,
@@ -132,25 +166,7 @@ def test_with_mock():
     time.sleep(cb.delay + 0.1)
 
     # Next call should succeed and close circuit
-    try:
-        result = cb.make_remote_call()
-        print(f"Call 4: Succeeded as expected, result: {result}")
-        assert cb.state == StateChoices.CLOSED
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-
-
-def run_all_tests():
-    """Run all circuit breaker tests"""
-    print("Starting Circuit Breaker Tests\n")
-    print("Make sure Flask app is running: python main.py\n")
-
-    test_closed_to_open()
-    test_open_state()
-    test_recovery()
-    test_random_behavior()
-    test_with_mock()
-
-
-if __name__ == "__main__":
-    run_all_tests()
+    result = cb.make_remote_call()
+    print(f"Call 4: Succeeded, result: {result}")
+    assert cb.state == StateChoices.CLOSED
+    assert result == "success"
