@@ -21,7 +21,6 @@ class RemoteCallFailedException(Exception):
 
 class CircuitBreaker:
     def __init__(self, func, exceptions, threshold, delay):
-
         self.func = func
         self.exceptions_to_catch = exceptions
         self.threshold = threshold
