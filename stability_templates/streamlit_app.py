@@ -307,9 +307,9 @@ with col4:
     with st.expander("ℹ️ About Timeout", expanded=False):
         st.markdown("""
         Timeout обмежує час виконання:
-        - Максимум 2 секунди на виклик
-        - Запобігає зависанням
-        - Швидке повідомлення про помилку
+        - Переривається за 2 секунди
+        - Працює через threading + join(timeout)
+        - ⚠️ Не переривається HTTP request, але обмежує загальний час
         """)
 
     timeout_stats = st.session_state.stats['timeout']
@@ -322,76 +322,149 @@ with col4:
         st.metric("Timeout", timeout_stats['timeout'])
 
     # Controls
-    delay = st.slider("Server delay (seconds)", 1, 10, 3, key="timeout_delay")
-    st.info(f"Timeout limit: 2 seconds")
+    delay = st.slider("Server delay (seconds)", 1, 5, 3, key="timeout_delay")
+    st.info(f"⏱️ Pattern timeout: 2s | Server delay: {delay}s")
 
     if st.button("🧪 Test Timeout", key="timeout_test", use_container_width=True):
+        # HTTP timeout більший, щоб Pattern Timeout спрацював першим
         timeout = Timeout(
             func=lambda: make_request(f"{BASE_URL}/slow?delay={delay}", timeout=10.0),
             timeout_seconds=2
         )
 
-        with st.spinner(f"Waiting {delay}s..."):
+        with st.spinner(f"Testing with {delay}s delay (2s limit)..."):
+            start = time.time()
             try:
                 result = timeout.call()
+                elapsed = time.time() - start
                 st.session_state.stats['timeout']['success'] += 1
 
                 st.markdown(f"""
                 <div class="success-box">
                     <strong>✅ Completed within timeout</strong><br>
-                    Delay: {delay}s<br>
+                    Actual time: {elapsed:.2f}s < 2s<br>
+                    Server delay: {delay}s<br>
                     Result: {result}
                 </div>
                 """, unsafe_allow_html=True)
 
             except Exception as e:
+                elapsed = time.time() - start
                 st.session_state.stats['timeout']['timeout'] += 1
 
                 st.markdown(f"""
                 <div class="error-box">
-                    <strong>⏰ Timeout exceeded</strong><br>
-                    Delay: {delay}s > 2s limit<br>
-                    Error: {str(e)}
+                    <strong>⏰ Timeout!</strong><br>
+                    Stopped at: {elapsed:.2f}s ≈ 2s<br>
+                    Server delay: {delay}s > 2s<br>
+                    Error: {type(e).__name__}
                 </div>
                 """, unsafe_allow_html=True)
 
         st.rerun()
 
 # Debounce
-with st.container():
-    st.header("⏳ Debounce")
+st.markdown("---")
+st.header("⏳ Debounce")
 
-    with st.expander("ℹ️ About Debounce", expanded=False):
-        st.markdown("""
-        Debounce відкладає виконання до закінчення періоду без нових викликів:
-        - Згладжування потоку подій
-        - Оптимізація частих викликів
-        """)
+with st.expander("ℹ️ About Debounce", expanded=False):
+    st.markdown("""
+    Debounce відкладає виконання:
+    - Чекає 1 секунду після останнього виклику
+    - Скасовує попередні виклики
+    - Ідеально для пошуку/автозбереження
 
-    # Симуляція з лічильником
-    if 'debounce_counter' not in st.session_state:
-        st.session_state.debounce_counter = 0
+    **⚠️ Обмеження**: Streamlit не підтримує real-time events.
+    Ця демонстрація показує концепцію через симуляцію.
+    """)
 
-    search_query = st.text_input("Search (simulated debounce)", key="search")
+col_a, col_b = st.columns(2)
 
-    if st.button("🔍 Search with Debounce"):
+with col_a:
+    st.subheader("Manual Test")
+
+    # Ініціалізація в основному потоці
+    if 'debounce_calls' not in st.session_state:
+        st.session_state.debounce_calls = 0
+        st.session_state.debounce_result = None
+
+    search_query = st.text_input("Search query", key="search")
+
+    if st.button("🔍 Trigger Debounce (simulated)", key="debounce_btn"):
         from patterns import Debounce
 
+        # Лічильник викликів для демонстрації
+        call_counter = {'count': 0}
+
         def search_function(query):
-            st.session_state.debounce_counter += 1
-            return f"Search result for: {query}"
+            # Використовуємо локальний лічильник замість session_state
+            call_counter['count'] += 1
+            return f"Search result for: '{query}'"
 
         debounce = Debounce(func=search_function, wait_time=1.0)
 
-        # Симуляція кількох швидких викликів
-        for i in range(5):
-            debounce.call(search_query)
+        # Симуляція 5 швидких викликів
+        with st.spinner("Simulating 5 rapid calls..."):
+            for i in range(5):
+                debounce.call(search_query)
+                st.session_state.debounce_calls += 1
 
-        time.sleep(1.1)  # Чекаємо завершення
-        result = debounce.flush()
+            time.sleep(1.1)  # Чекаємо debounce
+            result = debounce.flush()
 
-        st.success(f"Result: {result}")
-        st.info(f"Function called only once despite 5 attempts")
+        # Показуємо результат
+        if result:
+            st.success(f"✅ {result}")
+            st.info(f"📊 5 calls → 1 execution (saved 4 calls)")
+        else:
+            st.warning("⚠️ No result (function executed in thread)")
+
+    # Metrics
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.metric("Total calls", st.session_state.debounce_calls)
+    with col_m2:
+        st.metric("Saved calls", max(0, st.session_state.debounce_calls - st.session_state.debounce_calls // 5))
+
+with col_b:
+    st.subheader("Conceptual Demo")
+
+    st.code("""
+# Without Debounce (every keystroke)
+def on_input(query):
+    api_call(query)  # Called 5 times!
+
+# User types: "h", "he", "hel", "hell", "hello"
+# Result: 5 API calls
+
+# With Debounce (1s delay)
+@debounce(wait_time=1.0)
+def on_input(query):
+    api_call(query)  # Called once!
+
+# User types: "hello" (waits 1s)
+# Result: 1 API call (saved 4 calls)
+    """, language="python")
+
+    st.warning("💡 For real-time debounce, use JavaScript frontend or CLI app")
+
+    # Додатковий приклад
+    st.markdown("### Real-world Example")
+    st.code("""
+from patterns import Debounce
+
+# Search with debounce
+search = Debounce(api_search, wait_time=0.5)
+
+# User types fast: "python"
+search.call("p")     # Cancelled
+search.call("py")    # Cancelled
+search.call("pyt")   # Cancelled
+search.call("pyth")  # Cancelled
+search.call("python") # Executed after 0.5s
+
+# Result: 1 API call instead of 5
+    """, language="python")
 
 # Footer
 st.markdown("---")
