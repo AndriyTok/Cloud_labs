@@ -357,6 +357,42 @@ with col4:
 
         st.rerun()
 
+# Debounce
+with st.container():
+    st.header("⏳ Debounce")
+
+    with st.expander("ℹ️ About Debounce", expanded=False):
+        st.markdown("""
+        Debounce відкладає виконання до закінчення періоду без нових викликів:
+        - Згладжування потоку подій
+        - Оптимізація частих викликів
+        """)
+
+    # Симуляція з лічильником
+    if 'debounce_counter' not in st.session_state:
+        st.session_state.debounce_counter = 0
+
+    search_query = st.text_input("Search (simulated debounce)", key="search")
+
+    if st.button("🔍 Search with Debounce"):
+        from patterns import Debounce
+
+        def search_function(query):
+            st.session_state.debounce_counter += 1
+            return f"Search result for: {query}"
+
+        debounce = Debounce(func=search_function, wait_time=1.0)
+
+        # Симуляція кількох швидких викликів
+        for i in range(5):
+            debounce.call(search_query)
+
+        time.sleep(1.1)  # Чекаємо завершення
+        result = debounce.flush()
+
+        st.success(f"Result: {result}")
+        st.info(f"Function called only once despite 5 attempts")
+
 # Footer
 st.markdown("---")
 st.markdown("""
