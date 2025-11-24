@@ -6,15 +6,15 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
-)
+) #it is important for the timestamps in the logs
 
-#constant states
+#constant states of circuit breaker
 class StateChoices:
-    OPEN = "open"
-    CLOSED = "closed"
-    HALF_OPEN = "half_open"
+    OPEN = "open" # the circuit is open and calls are not allowed
+    CLOSED = "closed" # the circuit is closed and calls are allowed
+    HALF_OPEN = "half_open" # the circuit is half open and a test call is allowed
 
-#special exception for remote call failures
+#special exception for remote call failures (to distinguish all client problems in one place)
 class RemoteCallFailedException(Exception):
     pass
 
@@ -23,7 +23,7 @@ class CircuitBreaker:
     def __init__(self, func, exceptions, threshold, delay):
         self.func = func
         self.exceptions_to_catch = exceptions
-        self.threshold = threshold
+        self.threshold = threshold #number of failed attempts before opening the circuit
         self.delay = delay
         self.state = StateChoices.CLOSED
         self.last_attempt_timestamp = None
@@ -42,7 +42,7 @@ class CircuitBreaker:
     #default state handling
     def handle_closed_state(self, *args, **kwargs):
         allowed_exceptions = self.exceptions_to_catch
-        try:
+        try: #if function call is successful
             ret_val = self.func(*args, **kwargs)
             logging.info("Success: Remote call")
             self.update_last_attempt_timestamp()
