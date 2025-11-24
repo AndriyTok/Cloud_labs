@@ -137,38 +137,23 @@ with col1:
                 func=make_request,
                 exceptions=(Exception,),
                 threshold=3,
-                delay=5
+                delay=5 # seconds
             )
 
         cb = st.session_state.patterns['circuit_breaker']
 
         with st.spinner("Testing..."):
+            time.sleep(0.5) #to see current state
+
             try:
                 result = cb.make_remote_call(f"{BASE_URL}{cb_endpoint}")
                 st.session_state.stats['circuit_breaker']['success'] += 1
-                st.session_state.stats['circuit_breaker']['state'] = cb.state
-
-                st.markdown(f"""
-                <div class="success-box">
-                    <strong>✅ Success!</strong><br>
-                    State: {cb.state}<br>
-                    Failed count: {cb._failed_attempt_count}<br>
-                    Result: {result}
-                </div>
-                """, unsafe_allow_html=True)
 
             except Exception as e:
                 st.session_state.stats['circuit_breaker']['failed'] += 1
-                st.session_state.stats['circuit_breaker']['state'] = cb.state
 
-                st.markdown(f"""
-                <div class="error-box">
-                    <strong>❌ Failed</strong><br>
-                    State: {cb.state}<br>
-                    Failed count: {cb._failed_attempt_count}<br>
-                    Error: {str(e)}
-                </div>
-                """, unsafe_allow_html=True)
+            st.session_state.stats['circuit_breaker']['state'] = cb.state
+            time.sleep(0.5)
 
         st.rerun()
 
