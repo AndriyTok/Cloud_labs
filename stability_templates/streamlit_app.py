@@ -1,8 +1,35 @@
 import streamlit as st
 import requests
 import time
-from patterns import CircuitBreaker, Retry, Throttle, Timeout
+from patterns import (
+    CircuitBreaker,
+    Retry,
+    Throttle,
+    Timeout,
+    Debounce
+)
+from patterns.concurrency_templates.fan_in import FanIn
+from patterns.concurrency_templates.fan_out import FanOut
+from patterns.concurrency_templates.future import FutureResult
+from patterns.concurrency_templates.sharding import Sharding
+from patterns import RemoteCallFailedException, RetryExhausted, ThrottledException, TimeoutException
 from utils.http_client import make_request
+
+__all__ = [
+    'CircuitBreaker',
+    'RemoteCallFailedException',
+    'Retry',
+    'RetryExhausted',
+    'Throttle',
+    'ThrottledException',
+    'Timeout',
+    'TimeoutException',
+    'Debounce',
+    'FanIn',
+    'FanOut',
+    'FutureResult',
+    'Sharding',
+]
 
 # Page config
 st.set_page_config(
@@ -450,6 +477,167 @@ search.call("python") # Executed after 0.5s
 
 # Result: 1 API call instead of 5
     """, language="python")
+
+# Concurrency Patterns
+st.markdown("---")
+st.header("🔀 Concurrency Patterns")
+
+col_conc1, col_conc2 = st.columns(2)
+
+# Fan-In
+with col_conc1:
+    st.subheader("📥 Fan-In (Multiplexer)")
+
+    with st.expander("ℹ️ About Fan-In"):
+        st.markdown("""
+        Fan-In об'єднує результати з декількох джерел:
+        - Паралельні запити до різних API
+        - Агрегація даних з множини джерел
+        - Багато входів → один вихід
+        """)
+
+    if st.button("🧪 Test Fan-In", key="fanin_test"):
+        from patterns.concurrency_templates import FanIn
+        from utils.http_client import make_request
+
+        sources = [
+            lambda: make_request(f"{BASE_URL}/success"),
+            lambda: make_request(f"{BASE_URL}/counter"),
+            lambda: make_request(f"{BASE_URL}/random")
+        ]
+
+        fan_in = FanIn(sources)
+
+        with st.spinner("Collecting from 3 sources..."):
+            results = fan_in.collect()
+
+        successes = [r for r in results if r[2] is None]
+        failures = [r for r in results if r[2] is not None]
+
+        st.success(f"✅ Collected: {len(successes)}/{len(results)} successful")
+        for idx, result, error in results:
+            if error is None:
+                st.json({f"Source {idx}": result})
+
+# Fan-Out
+with col_conc2:
+    st.subheader("📤 Fan-Out (Demultiplexer)")
+
+    with st.expander("ℹ️ About Fan-Out"):
+        st.markdown("""
+        Fan-Out розподіляє одну задачу між обробниками:
+        - Паралельна обробка однієї події
+        - Broadcast повідомлення
+        - Один вхід → багато виходів
+        """)
+
+    if st.button("🧪 Test Fan-Out", key="fanout_test"):
+        from patterns.concurrency_templates import FanOut
+
+        handlers = [
+            lambda data: f"Handler 1: {data['count'] * 2}",
+            lambda data: f"Handler 2: {data['count'] + 100}",
+            lambda data: f"Handler 3: processed"
+        ]
+
+        fan_out = FanOut(handlers)
+        test_data = {"count": 10, "message": "test"}
+
+        with st.spinner("Distributing to 3 handlers..."):
+            results = fan_out.distribute(test_data)
+
+        st.success(f"✅ Processed by {len(results)} handlers")
+        for idx, result, error in results:
+            if error is None:
+                st.info(f"Handler {idx}: {result}")
+
+col_conc3, col_conc4 = st.columns(2)
+
+# Future
+with col_conc3:
+    st.subheader("🔮 Future")
+
+    with st.expander("ℹ️ About Future"):
+        st.markdown("""
+        Future представляє результат майбутньої операції:
+        - Асинхронне виконання
+        - Неблокуюче очікування
+        - Отримання результату пізніше
+        """)
+
+    if st.button("🧪 Test Future", key="future_test"):
+        from patterns.concurrency_templates.future import FutureResult
+        from utils.http_client import make_request
+
+        st.info("⏳ Starting async task...")
+
+        future = FutureResult(
+            make_request,
+            f"{BASE_URL}/slow?delay=2"
+        ).start()
+
+        # Перевіряємо статус відразу
+        st.info(f"🔄 Future is ready: {future.is_ready()}")
+
+        # Чекаємо результат
+        try:
+            with st.spinner("Waiting for future to complete..."):
+                result = future.get(timeout=5)
+
+            st.success("✅ Future completed!")
+            st.json(result)
+
+        except TimeoutError as e:
+            st.error(f"❌ Timeout: {e}")
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
+
+# Sharding
+with col_conc4:
+    st.subheader("🗂️ Sharding")
+
+    with st.expander("ℹ️ About Sharding"):
+        st.markdown("""
+        Sharding розподіляє дані за ключем:
+        - Hash-based distribution
+        - Паралельна обробка partitions
+        - Horizontal scaling
+        """)
+
+    if st.button("🧪 Test Sharding", key="sharding_test"):
+        from patterns.concurrency_templates import Sharding
+
+        def shard_handler(key, value):
+            return f"processed: {key}={value}"
+
+        sharding = Sharding([
+            shard_handler,
+            shard_handler,
+            shard_handler
+        ])
+
+        items = [
+            ("user_1", "data1"),
+            ("user_2", "data2"),
+            ("user_3", "data3"),
+            ("user_4", "data4"),
+            ("user_5", "data5"),
+        ]
+
+        with st.spinner("Sharding 5 items across 3 shards..."):
+            results = sharding.process(items)
+
+        st.success(f"✅ Processed {len(results)} items")
+
+        shard_distribution = {}
+        for key, result, error in results:
+            shard_id = sharding.get_shard(key)
+            if shard_id not in shard_distribution:
+                shard_distribution[shard_id] = []
+            shard_distribution[shard_id].append(key)
+
+        for shard_id, keys in shard_distribution.items():
+            st.info(f"Shard {shard_id}: {', '.join(keys)}")
 
 # Footer
 st.markdown("---")
