@@ -573,7 +573,8 @@ with col_conc3:
 
         future = FutureResult(
             make_request,
-            f"{BASE_URL}/slow?delay=2"
+            f"{BASE_URL}/slow?delay=2",
+            timeout=5.0
         ).start()
 
         # Перевіряємо статус відразу
