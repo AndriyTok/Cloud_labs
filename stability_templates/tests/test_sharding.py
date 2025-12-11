@@ -94,5 +94,4 @@ def test_sharding_performance_comparison():
     assert len(results_seq) == 20
     assert len(results_shard) == 20
 
-    # Шардінг має бути мінімум в 2 рази швидшим (в ідеалі в 4, але є накладні витрати)
     assert speedup > 2.0
