@@ -5,23 +5,67 @@ from stability_templates.patterns.concurrency_templates.fan_out import FanOut
 
 def test_fan_out_distribution():
     """Тест: розподіл даних між обробниками"""
+    print("\n=== Fan-Out Distribution Test ===")
     results = []
 
     def handler1(data):
+        print(f"  Handler 1 received: {data}")
         results.append(f"h1: {data}")
         return f"processed by handler1: {data}"
 
     def handler2(data):
+        print(f"  Handler 2 received: {data}")
         results.append(f"h2: {data}")
         return f"processed by handler2: {data}"
 
+    print("\nStarting Fan-Out distribution...")
     fan_out = FanOut([handler1, handler2])
     outputs = fan_out.distribute("test_data")
-    print(f'\n{results}')
-    print(f'\n{outputs}')
+
+    print(f'\nAll handlers received: {results}')
+    print(f'All outputs: {outputs}')
+    print(f'\n✓ Total handlers executed: {len(outputs)}')
+    print(f'✓ All data distributed: {len(results)} handlers processed the data')
 
     assert len(outputs) == 2
     assert len(results) == 2
+
+
+from unittest.mock import Mock, patch
+
+def test_fan_out_with_mock_http():
+    """Тест Fan-Out з мок-HTTP запитами"""
+    print("\n=== Fan-Out Mock HTTP Test ===")
+
+    # Створюємо мок-функцію для HTTP-запитів
+    mock_request = Mock()
+    mock_request.side_effect = [
+        {"status": "ok", "data": "response1"},
+        {"status": "ok", "data": "response2"},
+        {"status": "ok", "data": "response3"}
+    ]
+
+    def handler1(data):
+        print(f"  Handler 1: calling API with {data}")
+        return mock_request()
+
+    def handler2(data):
+        print(f"  Handler 2: calling API with {data}")
+        return mock_request()
+
+    def handler3(data):
+        print(f"  Handler 3: calling API with {data}")
+        return mock_request()
+
+    print("\nStarting Fan-Out with mock HTTP...")
+    fan_out = FanOut([handler1, handler2, handler3])
+    results = fan_out.distribute("user_data")
+
+    print(f"\n✓ Mock was called {mock_request.call_count} times")
+    print(f"✓ Results: {[r[1] for r in results if r[2] is None]}")
+
+    assert mock_request.call_count == 3
+    assert len(results) == 3
 
 def test_fan_out_performance_comparison():
     """
@@ -29,12 +73,10 @@ def test_fan_out_performance_comparison():
     """
     import time
 
-    # Функція, яка імітує довгу обробку (0.5 сек)
     def slow_handler(data):
         time.sleep(0.5)
         return f"processed {data}"
 
-    # Створюємо 3 однакові "важкі" обробники
     handlers = [slow_handler, slow_handler, slow_handler]
     test_data = "event_data"
 
@@ -57,9 +99,7 @@ def test_fan_out_performance_comparison():
     print(f"Fan-Out Duration:    {duration_par:.4f}s (Expected: ~0.5s)")
     print(f"Speedup:             {duration_seq / duration_par:.2f}x faster")
 
-    # Перевіряємо, що результати однакові (кількісно)
     assert len(results_seq) == 3
     assert len(results_par) == 3
 
-    # Головна перевірка: Паралельне має бути швидшим за послідовне
     assert duration_par < duration_seq
