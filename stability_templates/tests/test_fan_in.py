@@ -60,3 +60,53 @@ def test_fan_in_with_server(server_url, mock_service):
     results = fan_in.collect()
 
     assert len(results) == 3
+
+
+def test_fan_in_performance_comparison():
+    """
+    Тест-порівняння: Послідовне виконання vs Fan-In (Паралельне)
+    """
+    import time
+
+    # Функція, яка імітує довгий запит (0.5 сек)
+    def slow_task():
+        time.sleep(0.5)
+        return "done"
+
+    tasks_count = 3
+
+    # ---------------------------------------------------------
+    # 1. Послідовне виконання (Sequential)
+    # ---------------------------------------------------------
+    start_seq = time.perf_counter()
+
+    results_seq = []
+    for _ in range(tasks_count):
+        results_seq.append(slow_task())
+
+    duration_seq = time.perf_counter() - start_seq
+
+    # ---------------------------------------------------------
+    # 2. Паралельне виконання (Fan-In)
+    # ---------------------------------------------------------
+    sources = [slow_task] * tasks_count  # Створюємо список з 3-х функцій
+    fan_in = FanIn(sources)
+
+    start_par = time.perf_counter()
+    results_par = fan_in.collect()
+    duration_par = time.perf_counter() - start_par
+
+    # ---------------------------------------------------------
+    # 3. Вивід результатів та перевірка
+    # ---------------------------------------------------------
+    print(f"\n--- Performance Comparison ---")
+    print(f"Sequential Duration: {duration_seq:.4f}s (Expected: ~{0.5 * tasks_count}s)")
+    print(f"Fan-In Duration:     {duration_par:.4f}s (Expected: ~0.5s)")
+    print(f"Speedup:             {duration_seq / duration_par:.2f}x faster")
+
+    # Перевірки
+    assert len(results_seq) == tasks_count
+    assert len(results_par) == tasks_count
+
+    # Fan-In має бути значно швидшим (хоча б у 2 рази для 3-х задач)
+    assert duration_par < duration_seq
