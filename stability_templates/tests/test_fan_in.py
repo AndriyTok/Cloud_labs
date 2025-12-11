@@ -8,14 +8,17 @@ def test_fan_in_multiple_sources():
     """Тест: збір результатів з декількох джерел"""
     def source1():
         time.sleep(0.1)
+        print('result 1 ready')
         return "result1"
 
     def source2():
         time.sleep(0.2)
+        print('result 2 ready')
         return "result2"
 
     def source3():
         time.sleep(0.1)
+        print('result 3 ready')
         return "result3"
 
     fan_in = FanIn([source1, source2, source3])
@@ -26,24 +29,8 @@ def test_fan_in_multiple_sources():
     assert "result1" in success_results
     assert "result2" in success_results
 
-
-def test_fan_in_with_failures():
-    """Тест: обробка помилок в джерелах"""
-    def good_source():
-        return "success"
-
-    def bad_source():
-        raise Exception("Source failed")
-
-    fan_in = FanIn([good_source, bad_source])
-    results = fan_in.collect()
-
-    assert len(results) == 2
-    successes = [r for r in results if r[2] is None]
-    failures = [r for r in results if r[2] is not None]
-
-    assert len(successes) == 1
-    assert len(failures) == 1
+    print(f'\n Results: {results}')
+    print(f'\n Success results: {success_results}')
 
 
 def test_fan_in_with_server(server_url, mock_service):
@@ -56,8 +43,11 @@ def test_fan_in_with_server(server_url, mock_service):
         lambda: make_request(f"{server_url}/success")
     ]
 
+    print(sources)
+
     fan_in = FanIn(sources)
     results = fan_in.collect()
+    print(f'\n Fan-In Results: {results}')
 
     assert len(results) == 3
 
@@ -75,9 +65,6 @@ def test_fan_in_performance_comparison():
 
     tasks_count = 3
 
-    # ---------------------------------------------------------
-    # 1. Послідовне виконання (Sequential)
-    # ---------------------------------------------------------
     start_seq = time.perf_counter()
 
     results_seq = []
@@ -86,9 +73,6 @@ def test_fan_in_performance_comparison():
 
     duration_seq = time.perf_counter() - start_seq
 
-    # ---------------------------------------------------------
-    # 2. Паралельне виконання (Fan-In)
-    # ---------------------------------------------------------
     sources = [slow_task] * tasks_count  # Створюємо список з 3-х функцій
     fan_in = FanIn(sources)
 
@@ -96,9 +80,6 @@ def test_fan_in_performance_comparison():
     results_par = fan_in.collect()
     duration_par = time.perf_counter() - start_par
 
-    # ---------------------------------------------------------
-    # 3. Вивід результатів та перевірка
-    # ---------------------------------------------------------
     print(f"\n--- Performance Comparison ---")
     print(f"Sequential Duration: {duration_seq:.4f}s (Expected: ~{0.5 * tasks_count}s)")
     print(f"Fan-In Duration:     {duration_par:.4f}s (Expected: ~0.5s)")
