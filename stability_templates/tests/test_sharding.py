@@ -40,3 +40,59 @@ def test_sharding_consistent_hashing():
     shard2 = sharding.get_shard("test_key")
 
     assert shard1 == shard2
+
+
+def test_sharding_performance_comparison():
+    """
+    Тест-порівняння: Обробка в одному потоці vs Шардінг (4 потоки)
+    """
+    import time
+
+    # 1. Підготовка даних
+    # 20 елементів. Кожен обробляється 0.1 сек.
+    items = [(f"user_{i}", f"data_{i}") for i in range(20)]
+
+    def slow_process(key, value):
+        time.sleep(0.1)
+        return f"processed {key}"
+
+    # ---------------------------------------------------------
+    # Сценарій А: Без шардінгу (Послідовно)
+    # ---------------------------------------------------------
+    start_seq = time.perf_counter()
+
+    results_seq = []
+    for key, value in items:
+        results_seq.append(slow_process(key, value))
+
+    duration_seq = time.perf_counter() - start_seq
+
+    # ---------------------------------------------------------
+    # Сценарій Б: Шардінг (4 шарди / потоки)
+    # ---------------------------------------------------------
+    # Створюємо 4 однакових обробники (імітуємо 4 сервери)
+    handlers = [slow_process, slow_process, slow_process, slow_process]
+    sharding = Sharding(handlers)
+
+    start_shard = time.perf_counter()
+    results_shard = sharding.process(items)
+    duration_shard = time.perf_counter() - start_shard
+
+    # ---------------------------------------------------------
+    # Результати
+    # ---------------------------------------------------------
+    print(f"\n--- Sharding Performance ---")
+    print(f"Items count: {len(items)}")
+    print(f"Single Thread Time: {duration_seq:.4f}s (Expected: ~2.0s)")
+    print(f"Sharded (4x) Time:  {duration_shard:.4f}s (Expected: ~0.5s)")
+
+    # Speedup = У скільки разів швидше
+    speedup = duration_seq / duration_shard
+    print(f"Speedup:            {speedup:.2f}x faster")
+
+    # Перевірки
+    assert len(results_seq) == 20
+    assert len(results_shard) == 20
+
+    # Шардінг має бути мінімум в 2 рази швидшим (в ідеалі в 4, але є накладні витрати)
+    assert speedup > 2.0
